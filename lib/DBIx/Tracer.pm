@@ -2,7 +2,7 @@ package DBIx::Tracer;
 use strict;
 use warnings;
 use 5.008008;
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use DBI;
 use Time::HiRes qw(gettimeofday tv_interval);
