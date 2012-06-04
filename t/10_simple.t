@@ -9,7 +9,7 @@ my $dbh = t::Util->new_dbh;
 
 my @logs = do {
     my @logs;
-    DBIx::Tracer->new(sub {
+    my $tracer = DBIx::Tracer->new(sub {
         my %args = @_;
         push @logs, \%args;
     });

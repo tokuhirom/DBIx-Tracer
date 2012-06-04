@@ -39,7 +39,7 @@ sub capture(&) {
     my ($code) = @_;
 
     my @logs;
-    DBIx::Tracer->new(sub {
+    my $tracer = DBIx::Tracer->new(sub {
         my %args = @_;
         push @logs, \%args;
     });
