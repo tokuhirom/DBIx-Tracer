@@ -114,8 +114,9 @@ sub _st_execute {
         my $begin = [gettimeofday];
         my $wantarray = wantarray ? 1 : 0;
         my $res = $wantarray ? [$org->($sth, @_)] : scalar $org->($sth, @_);
+        my $time = tv_interval $begin, [gettimeofday];
 
-        $class->_logging($logger, $dbh, $ret, $begin, \@params);
+        $class->_logging($logger, $dbh, $ret, $time, \@params);
 
         return $wantarray ? @$res : $res;
     };
@@ -155,8 +156,9 @@ sub _select_array {
         else {
             $res = $org->($dbh, $stmt, $attr, @bind);
         }
+        my $time = tv_interval $begin, [gettimeofday];
 
-        $class->_logging($logger, $dbh, $ret, $begin, \@bind);
+        $class->_logging($logger, $dbh, $ret, $time, \@bind);
 
         if ($is_selectrow_array) {
             return $wantarray ? @$res : $res;
@@ -180,8 +182,9 @@ sub _db_do {
 
         my $begin = [gettimeofday];
         my $res = $wantarray ? [$org->($dbh, $stmt, $attr, @bind)] : scalar $org->($dbh, $stmt, $attr, @bind);
+        my $time = tv_interval $begin, [gettimeofday];
 
-        $class->_logging($logger, $dbh, $ret, $begin, \@bind);
+        $class->_logging($logger, $dbh, $ret, $time, \@bind);
 
         return $wantarray ? @$res : $res;
     };
@@ -206,15 +209,76 @@ __END__
 
 =head1 NAME
 
-DBIx::Tracer - A module for you
+DBIx::Tracer - Easy tracer for DBI
 
 =head1 SYNOPSIS
 
-  use DBIx::Tracer;
+    use DBIx::Tracer;
+
+    my $tracer = DBIx::Tracer->new(
+        sub {
+            my %args = @_;
+            say $args{dbh};
+            say $args{time};
+            say $args{sql};
+            say "Bind: $_" for @{$args{bind_params}};
+        }
+    );
 
 =head1 DESCRIPTION
 
-DBIx::Tracer is
+DBIx::Tracer is easy tracer for DBI. You can trace a SQL queries without 
+modifying configuration in your application.
+
+You can insert snippets using DBIx::Tracer, and profile it.
+
+=head1 GUARD OBJECT
+
+DBIx::Tracer uses Scope::Guard-ish guard object strategy.
+
+C<< DBIx::Tracer->new >> installs method modifiers, and C<< DBIx::Tracer->DESTROY >> uninstall method modifiers.
+
+You must keep the instance of DBIx::Trace in the context.
+
+=head1 METHODS
+
+=over 4
+
+=item DBIx::Tracer->new(CodeRef: $code)
+
+    my $tracer = DBIx::Tracer->new(
+        sub { ... }
+    );
+
+Create instance of DBIx::Tracer. Constructor takes callback function, will call on after each queries executed.
+
+You must keep this instance you want to logging. Destructor uninstall method modifiers.
+
+=back
+
+=head1 CALLBACK OPTIONS
+
+DBIx::Tracer passes following parameters to callback function.
+
+=over 4
+
+=item dbh
+
+instance of $dbh.
+
+=item sql
+
+SQL query in string.
+
+=item bind_params : ArrayRef[Str]
+
+binded parameters for the query in arrayref.
+
+=item time
+
+Elapsed times for query in floating seconds.
+
+=back
 
 =head1 AUTHOR
 

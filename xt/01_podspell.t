@@ -58,3 +58,10 @@ Gosuke
 Miyashita
 mysqldiff
 mmm
+CALLBACK
+callback
+DBI
+dbi
+dbh
+sql
+uninstall
