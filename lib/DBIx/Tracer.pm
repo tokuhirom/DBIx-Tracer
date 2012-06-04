@@ -4,7 +4,173 @@ use warnings;
 use 5.008008;
 our $VERSION = '0.01';
 
+use DBI;
+use Time::HiRes qw(gettimeofday);
 
+my $org_execute               = \&DBI::st::execute;
+my $org_bind_param            = \&DBI::st::bind_param;
+my $org_db_do                 = \&DBI::db::do;
+my $org_db_selectall_arrayref = \&DBI::db::selectall_arrayref;
+my $org_db_selectrow_arrayref = \&DBI::db::selectrow_arrayref;
+my $org_db_selectrow_array    = \&DBI::db::selectrow_array;
+
+my $has_mysql = eval { require DBD::mysql; 1 } ? 1 : 0;
+my $pp_mode   = $INC{'DBI/PurePerl.pm'} ? 1 : 0;
+
+my $st_execute;
+my $st_bind_param;
+my $db_do;
+my $selectall_arrayref;
+my $selectrow_arrayref;
+my $selectrow_array;
+
+our $OUTPUT;
+
+sub enable {
+    my ($class) = @_;
+
+    $st_execute    ||= $class->_st_execute($org_execute);
+    $st_bind_param ||= $class->_st_bind_param($org_bind_param);
+    $db_do         ||= $class->_db_do($org_db_do) if $has_mysql;
+    unless ($pp_mode) {
+        $selectall_arrayref ||= $class->_select_array($org_db_selectall_arrayref);
+        $selectrow_arrayref ||= $class->_select_array($org_db_selectrow_arrayref);
+        $selectrow_array    ||= $class->_select_array($org_db_selectrow_array, 1);
+    }
+
+    no warnings qw(redefine prototype);
+    *DBI::st::execute    = $st_execute;
+    *DBI::st::bind_param = $st_bind_param;
+    *DBI::db::do         = $db_do if $has_mysql;
+    unless ($pp_mode) {
+        *DBI::db::selectall_arrayref = $selectall_arrayref;
+        *DBI::db::selectrow_arrayref = $selectrow_arrayref;
+        *DBI::db::selectrow_array    = $selectrow_array;
+    }
+}
+
+sub disable {
+    no warnings qw(redefine prototype);
+    *DBI::st::execute    = $org_execute;
+    *DBI::st::bind_param = $org_bind_param;
+    *DBI::db::do         = $org_db_do if $has_mysql;
+    unless ($pp_mode) {
+        *DBI::db::selectall_arrayref = $org_db_selectall_arrayref;
+        *DBI::db::selectrow_arrayref = $org_db_selectrow_arrayref;
+        *DBI::db::selectrow_array    = $org_db_selectrow_array;
+    }
+}
+
+# ------------------------------------------------------------------------- 
+# wrapper methods.
+
+sub _st_execute {
+    my ($class, $org) = @_;
+    
+    return sub {
+        my $sth = shift;
+        my @params = @_;
+        my @types;
+
+        my $dbh = $sth->{Database};
+        my $ret = $sth->{Statement};
+        if (my $attrs = $sth->{private_DBIx_Tracer_attrs}) {
+            my $bind_params = $sth->{private_DBIx_Tracer_params};
+            for my $i (1..@$attrs) {
+                push @types, $attrs->[$i - 1]{TYPE};
+                push @params, $bind_params->[$i - 1] if $bind_params;
+            }
+        }
+        $sth->{private_DBIx_Tracer_params} = undef;
+
+        my $begin = [gettimeofday];
+        my $wantarray = wantarray ? 1 : 0;
+        my $res = $wantarray ? [$org->($sth, @_)] : scalar $org->($sth, @_);
+
+        $class->_logging($dbh, $ret, $begin, \@params);
+
+        return $wantarray ? @$res : $res;
+    };
+}
+
+sub _st_bind_param {
+    my ($class, $org) = @_;
+
+    return sub {
+        my ($sth, $p_num, $value, $attr) = @_;
+        $sth->{private_DBIx_Tracer_params} ||= [];
+        $sth->{private_DBIx_Tracer_attrs } ||= [];
+        $attr = +{ TYPE => $attr || 0 } unless ref $attr eq 'HASH';
+        $sth->{private_DBIx_Tracer_params}[$p_num - 1] = $value;
+        $sth->{private_DBIx_Tracer_attrs }[$p_num - 1] = $attr;
+        $org->(@_);
+    };
+}
+
+sub _select_array {
+    my ($class, $org, $is_selectrow_array) = @_;
+
+    return sub {
+        my $wantarray = wantarray;
+        my ($dbh, $stmt, $attr, @bind) = @_;
+
+        no warnings qw(redefine prototype);
+        local *DBI::st::execute = $org_execute; # suppress duplicate logging
+
+        my $ret = ref $stmt ? $stmt->{Statement} : $stmt;
+
+        my $begin = [gettimeofday];
+        my $res;
+        if ($is_selectrow_array) {
+            $res = $wantarray ? [$org->($dbh, $stmt, $attr, @bind)] : $org->($dbh, $stmt, $attr, @bind);
+        }
+        else {
+            $res = $org->($dbh, $stmt, $attr, @bind);
+        }
+
+        $class->_logging($dbh, $ret, $begin, \@bind);
+
+        if ($is_selectrow_array) {
+            return $wantarray ? @$res : $res;
+        }
+        return $res;
+    };
+}
+
+sub _db_do {
+    my ($class, $org) = @_;
+
+    return sub {
+        my $wantarray = wantarray ? 1 : 0;
+        my ($dbh, $stmt, $attr, @bind) = @_;
+
+        if ($dbh->{Driver}{Name} ne 'mysql') {
+            return $org->($dbh, $stmt, $attr, @bind);
+        }
+
+        my $ret = $stmt;
+
+        my $begin = [gettimeofday];
+        my $res = $wantarray ? [$org->($dbh, $stmt, $attr, @bind)] : scalar $org->($dbh, $stmt, $attr, @bind);
+
+        $class->_logging($dbh, $ret, $begin, \@bind);
+
+        return $wantarray ? @$res : $res;
+    };
+}
+
+sub _logging {
+    my ($class, $dbh, $sql, $time, $bind_params) = @_;
+    $bind_params ||= [];
+
+$OUTPUT or die;
+    $OUTPUT->(
+        dbh         => $dbh,
+        time        => $time,
+        sql         => $sql,
+        bind_params => $bind_params,
+    );
+}
 
 1;
 __END__
