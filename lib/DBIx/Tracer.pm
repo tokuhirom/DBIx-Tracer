@@ -6,6 +6,7 @@ our $VERSION = '0.01';
 
 use DBI;
 use Time::HiRes qw(gettimeofday);
+use Carp;
 
 my $org_execute               = \&DBI::st::execute;
 my $org_bind_param            = \&DBI::st::bind_param;
@@ -26,16 +27,37 @@ my $selectrow_array;
 
 our $OUTPUT;
 
-sub enable {
-    my ($class) = @_;
+sub new {
+    my $class = shift;
 
-    $st_execute    ||= $class->_st_execute($org_execute);
-    $st_bind_param ||= $class->_st_bind_param($org_bind_param);
-    $db_do         ||= $class->_db_do($org_db_do) if $has_mysql;
+    # argument processing
+    my %args;
+    if (@_==1) {
+        if (ref $_[0] eq 'CODE') {
+            $args{code} = $_[0];
+        } else {
+            %args = %{$_[0]};
+        }
+    } else {
+        %args = @_;
+    }
+    for (qw(code)) {
+        unless ($args{$_}) {
+            croak "Missing mandatory parameter $_ for DBIx::Tracer->new";
+        }
+    }
+
+    # create object
+    my $self = bless \%args, $class;
+
+    # wrap methods
+    $st_execute    ||= $self->_st_execute($org_execute);
+    $st_bind_param ||= $self->_st_bind_param($org_bind_param);
+    $db_do         ||= $self->_db_do($org_db_do) if $has_mysql;
     unless ($pp_mode) {
-        $selectall_arrayref ||= $class->_select_array($org_db_selectall_arrayref);
-        $selectrow_arrayref ||= $class->_select_array($org_db_selectrow_arrayref);
-        $selectrow_array    ||= $class->_select_array($org_db_selectrow_array, 1);
+        $selectall_arrayref ||= $self->_select_array($org_db_selectall_arrayref);
+        $selectrow_arrayref ||= $self->_select_array($org_db_selectrow_arrayref);
+        $selectrow_array    ||= $self->_select_array($org_db_selectrow_array, 1);
     }
 
     no warnings qw(redefine prototype);
@@ -65,7 +87,7 @@ sub disable {
 # wrapper methods.
 
 sub _st_execute {
-    my ($class, $org) = @_;
+    my ($self, $org) = @_;
     
     return sub {
         my $sth = shift;
@@ -87,14 +109,14 @@ sub _st_execute {
         my $wantarray = wantarray ? 1 : 0;
         my $res = $wantarray ? [$org->($sth, @_)] : scalar $org->($sth, @_);
 
-        $class->_logging($dbh, $ret, $begin, \@params);
+        $self->_logging($dbh, $ret, $begin, \@params);
 
         return $wantarray ? @$res : $res;
     };
 }
 
 sub _st_bind_param {
-    my ($class, $org) = @_;
+    my ($self, $org) = @_;
 
     return sub {
         my ($sth, $p_num, $value, $attr) = @_;
@@ -108,7 +130,7 @@ sub _st_bind_param {
 }
 
 sub _select_array {
-    my ($class, $org, $is_selectrow_array) = @_;
+    my ($self, $org, $is_selectrow_array) = @_;
 
     return sub {
         my $wantarray = wantarray;
@@ -128,7 +150,7 @@ sub _select_array {
             $res = $org->($dbh, $stmt, $attr, @bind);
         }
 
-        $class->_logging($dbh, $ret, $begin, \@bind);
+        $self->_logging($dbh, $ret, $begin, \@bind);
 
         if ($is_selectrow_array) {
             return $wantarray ? @$res : $res;
@@ -138,7 +160,7 @@ sub _select_array {
 }
 
 sub _db_do {
-    my ($class, $org) = @_;
+    my ($self, $org) = @_;
 
     return sub {
         my $wantarray = wantarray ? 1 : 0;
@@ -153,18 +175,17 @@ sub _db_do {
         my $begin = [gettimeofday];
         my $res = $wantarray ? [$org->($dbh, $stmt, $attr, @bind)] : scalar $org->($dbh, $stmt, $attr, @bind);
 
-        $class->_logging($dbh, $ret, $begin, \@bind);
+        $self->_logging($dbh, $ret, $begin, \@bind);
 
         return $wantarray ? @$res : $res;
     };
 }
 
 sub _logging {
-    my ($class, $dbh, $sql, $time, $bind_params) = @_;
+    my ($self, $dbh, $sql, $time, $bind_params) = @_;
     $bind_params ||= [];
 
-$OUTPUT or die;
-    $OUTPUT->(
+    $self->{code}->(
         dbh         => $dbh,
         time        => $time,
         sql         => $sql,

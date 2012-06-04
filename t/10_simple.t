@@ -7,9 +7,14 @@ use DBIx::Tracer;
 
 my $dbh = t::Util->new_dbh;
 
-my @logs = capture {
-    DBIx::Tracer->enable;
+my @logs = do {
+    my @logs;
+    DBIx::Tracer->new(sub {
+        my %args = @_;
+        push @logs, \%args;
+    });
     $dbh->do('SELECT * FROM sqlite_master');
+    @logs;
 };
 
 like $logs[0]->{sql}, qr/SELECT \* FROM sqlite_master/, 'SQL';
