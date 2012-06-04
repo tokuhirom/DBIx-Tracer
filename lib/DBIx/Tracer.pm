@@ -5,7 +5,7 @@ use 5.008008;
 our $VERSION = '0.01';
 
 use DBI;
-use Time::HiRes qw(gettimeofday);
+use Time::HiRes qw(gettimeofday tv_interval);
 use Carp;
 
 my $org_execute               = \&DBI::st::execute;
@@ -114,7 +114,7 @@ sub _st_execute {
         my $begin = [gettimeofday];
         my $wantarray = wantarray ? 1 : 0;
         my $res = $wantarray ? [$org->($sth, @_)] : scalar $org->($sth, @_);
-        my $time = tv_interval $begin, [gettimeofday];
+        my $time = tv_interval($begin, [gettimeofday]);
 
         $class->_logging($logger, $dbh, $ret, $time, \@params);
 
@@ -156,7 +156,7 @@ sub _select_array {
         else {
             $res = $org->($dbh, $stmt, $attr, @bind);
         }
-        my $time = tv_interval $begin, [gettimeofday];
+        my $time = tv_interval($begin, [gettimeofday]);
 
         $class->_logging($logger, $dbh, $ret, $time, \@bind);
 
@@ -182,7 +182,7 @@ sub _db_do {
 
         my $begin = [gettimeofday];
         my $res = $wantarray ? [$org->($dbh, $stmt, $attr, @bind)] : scalar $org->($dbh, $stmt, $attr, @bind);
-        my $time = tv_interval $begin, [gettimeofday];
+        my $time = tv_interval($begin, [gettimeofday]);
 
         $class->_logging($logger, $dbh, $ret, $time, \@bind);
 
