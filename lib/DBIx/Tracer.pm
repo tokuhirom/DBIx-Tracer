@@ -280,11 +280,27 @@ Elapsed times for query in floating seconds.
 
 =back
 
+=head1 FAQ
+
+=over 4
+
+=item Why don't you use Callbacks feature in DBI?
+
+I don't want to modify DBI configuration in my application for tracing.
+
+=back
+
 =head1 AUTHOR
 
 Tokuhiro Matsuno E<lt>tokuhirom AAJKLFJEF@ GMAIL COME<gt>
 
+=head1 THANKS TO
+
+xaicron is author of L<DBIx::QueryLog>. Most part of DBIx::Tracer was taken from DBIx::QueryLog.
+
 =head1 SEE ALSO
+
+L<DBIx::QueryLog>
 
 =head1 LICENSE
 
