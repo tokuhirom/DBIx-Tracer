@@ -39,10 +39,10 @@ sub capture(&) {
     my ($code) = @_;
 
     my @logs;
-    local $DBIx::Tracer::OUTPUT = sub {
+    DBIx::Tracer->new(sub {
         my %args = @_;
         push @logs, \%args;
-    };
+    });
 
     $code->();
 
