@@ -1,5 +1,7 @@
 language: perl
 sudo: false
+before_install:
+  - cpanm DBD::mysql -n
 perl:
   - "5.14"
   - "5.16"
