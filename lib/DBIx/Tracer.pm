@@ -8,6 +8,8 @@ use DBI;
 use Time::HiRes qw(gettimeofday tv_interval);
 use Carp;
 
+our $IN_DO;
+
 my $org_execute               = \&DBI::st::execute;
 my $org_bind_param            = \&DBI::st::bind_param;
 my $org_db_do                 = \&DBI::db::do;
@@ -115,7 +117,11 @@ sub _st_execute {
         my $res = $wantarray ? [$org->($sth, @_)] : scalar $org->($sth, @_);
         my $time = tv_interval($begin, [gettimeofday]);
 
-        $class->_logging($logger, $dbh, $ret, $time, \@params);
+        # DBD::SQLite calls ::st::execute from ::do.
+        # It makes duplicated logging output.
+        unless ($IN_DO) {
+            $class->_logging($logger, $dbh, $ret, $time, \@params);
+        }
 
         return $wantarray ? @$res : $res;
     };
@@ -172,6 +178,8 @@ sub _db_do {
     return sub {
         my $wantarray = wantarray ? 1 : 0;
         my ($dbh, $stmt, $attr, @bind) = @_;
+
+        local $IN_DO = 1;
 
         my $ret = $stmt;
 
