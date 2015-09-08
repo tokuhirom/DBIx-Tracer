@@ -72,7 +72,7 @@ DBIx::Tracer passes following parameters to callback function.
 
 # AUTHOR
 
-Tokuhiro Matsuno <tokuhirom AAJKLFJEF@ GMAIL COM>
+Tokuhiro Matsuno &lt;tokuhirom AAJKLFJEF@ GMAIL COM>
 
 # THANKS TO
 

@@ -2,6 +2,10 @@ Revision history for Perl extension DBIx::Tracer
 
 {{$NEXT}}
 
+0.03 2015-09-08T23:12:20Z
+
+    - Support DBD::SQLite 1.48+
+
 0.02
 
    - docs
