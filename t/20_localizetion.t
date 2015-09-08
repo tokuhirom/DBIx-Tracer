@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::Requires 'DBD::SQLite';
+use Test::Requires { 'DBD::SQLite' => 1.48 };
 use Test::More;
 use t::Util;
 use DBIx::Tracer ();

@@ -8,6 +8,8 @@ use DBI;
 use Time::HiRes qw(gettimeofday tv_interval);
 use Carp;
 
+our $IN_DO;
+
 my $org_execute               = \&DBI::st::execute;
 my $org_bind_param            = \&DBI::st::bind_param;
 my $org_db_do                 = \&DBI::db::do;
@@ -15,7 +17,6 @@ my $org_db_selectall_arrayref = \&DBI::db::selectall_arrayref;
 my $org_db_selectrow_arrayref = \&DBI::db::selectrow_arrayref;
 my $org_db_selectrow_array    = \&DBI::db::selectrow_array;
 
-my $has_mysql = eval { require DBD::mysql; 1 } ? 1 : 0;
 my $pp_mode   = $INC{'DBI/PurePerl.pm'} ? 1 : 0;
 
 my $st_execute;
@@ -55,7 +56,7 @@ sub new {
     # wrap methods
     my $st_execute    = $class->_st_execute($org_execute, $logger);
     $st_bind_param = $class->_st_bind_param($org_bind_param, $logger);
-    $db_do         = $class->_db_do($org_db_do, $logger) if $has_mysql;
+    $db_do         = $class->_db_do($org_db_do, $logger);
     unless ($pp_mode) {
         $selectall_arrayref = $class->_select_array($org_db_selectall_arrayref, 0, $logger);
         $selectrow_arrayref = $class->_select_array($org_db_selectrow_arrayref, 0, $logger);
@@ -65,7 +66,7 @@ sub new {
     no warnings qw(redefine prototype);
     *DBI::st::execute    = $st_execute;
     *DBI::st::bind_param = $st_bind_param;
-    *DBI::db::do         = $db_do if $has_mysql;
+    *DBI::db::do         = $db_do;
     unless ($pp_mode) {
         *DBI::db::selectall_arrayref = $selectall_arrayref;
         *DBI::db::selectrow_arrayref = $selectrow_arrayref;
@@ -81,7 +82,7 @@ sub DESTROY {
     no warnings qw(redefine prototype);
     *DBI::st::execute    = $org_execute;
     *DBI::st::bind_param = $org_bind_param;
-    *DBI::db::do         = $org_db_do if $has_mysql;
+    *DBI::db::do         = $org_db_do;
     unless ($pp_mode) {
         *DBI::db::selectall_arrayref = $org_db_selectall_arrayref;
         *DBI::db::selectrow_arrayref = $org_db_selectrow_arrayref;
@@ -116,7 +117,11 @@ sub _st_execute {
         my $res = $wantarray ? [$org->($sth, @_)] : scalar $org->($sth, @_);
         my $time = tv_interval($begin, [gettimeofday]);
 
-        $class->_logging($logger, $dbh, $ret, $time, \@params);
+        # DBD::SQLite calls ::st::execute from ::do.
+        # It makes duplicated logging output.
+        unless ($IN_DO) {
+            $class->_logging($logger, $dbh, $ret, $time, \@params);
+        }
 
         return $wantarray ? @$res : $res;
     };
@@ -174,9 +179,7 @@ sub _db_do {
         my $wantarray = wantarray ? 1 : 0;
         my ($dbh, $stmt, $attr, @bind) = @_;
 
-        if ($dbh->{Driver}{Name} ne 'mysql') {
-            return $org->($dbh, $stmt, $attr, @bind);
-        }
+        local $IN_DO = 1;
 
         my $ret = $stmt;
 
